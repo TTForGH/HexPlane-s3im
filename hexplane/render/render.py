@@ -8,19 +8,21 @@ from tqdm.auto import tqdm
 
 from hexplane.render.util.metric import rgb_lpips, rgb_ssim
 from hexplane.render.util.util import visualize_depth_numpy
+# from hexplane.render.s3im import S3IM
+
 
 from hexplane.render.util.s3im import S3IM
 
 def OctreeRender_trilinear_fast(
-    rays,
-    time,
-    model,
-    chunk=4096,
-    N_samples=-1,
-    ndc_ray=False,
-    white_bg=True,
-    is_train=False,
-    device="cuda",
+        rays,
+        time,
+        model,
+        chunk=4096,
+        N_samples=-1,
+        ndc_ray=False,
+        white_bg=True,
+        is_train=False,
+        device="cuda",
 ):
     """
     Batched rendering function.
@@ -28,8 +30,8 @@ def OctreeRender_trilinear_fast(
     rgbs, alphas, depth_maps, z_vals = [], [], [], []
     N_rays_all = rays.shape[0]
     for chunk_idx in range(N_rays_all // chunk + int(N_rays_all % chunk > 0)):
-        rays_chunk = rays[chunk_idx * chunk : (chunk_idx + 1) * chunk].to(device)
-        time_chunk = time[chunk_idx * chunk : (chunk_idx + 1) * chunk].to(device)
+        rays_chunk = rays[chunk_idx * chunk: (chunk_idx + 1) * chunk].to(device)
+        time_chunk = time[chunk_idx * chunk: (chunk_idx + 1) * chunk].to(device)
 
         rgb_map, depth_map, alpha_map, z_val_map = model(
             rays_chunk,
@@ -54,19 +56,18 @@ def OctreeRender_trilinear_fast(
 
 @torch.no_grad()
 def evaluation(
-    test_dataset,
-    model,
-    cfg,
-    savePath=None,
-    N_vis=5,
-    prefix="",
-    N_samples=-1,
-    white_bg=False,
-    ndc_ray=False,
-    compute_extra_metrics=True,
-    device="cuda",
+        test_dataset,
+        model,
+        cfg,
+        savePath=None,
+        N_vis=5,
+        prefix="",
+        N_samples=-1,
+        white_bg=False,
+        ndc_ray=False,
+        compute_extra_metrics=True,
+        device="cuda",
 ):
-
     """
     Evaluate the model on the test rays and compute metrics.
     """
@@ -82,7 +83,7 @@ def evaluation(
 
         # 初始化 S3IM 实例
     # s3im = S3IM(kernel_size=4, stride=4, repeat_time=50, patch_height=64, patch_width=500, max_val=1.0, filter_size=11, filter_sigma=1.5).to(device) # test-in
-    
+
     near_far = test_dataset.near_far
     img_eval_interval = 1 if N_vis < 0 else max(len(test_dataset) // N_vis, 1)
     idxs = list(range(0, len(test_dataset), img_eval_interval))
@@ -116,22 +117,21 @@ def evaluation(
             depth = data["depth"]
             gt_depth, _ = visualize_depth_numpy(depth.numpy(), near_far)
 
-# test-in            
-            
+        # s3im = S3IM(repeat_time=10)  # test-in
+
+        # test-in
+
         if len(test_dataset):
             gt_rgb = gt_rgb.view(H, W, 3)
             loss = torch.mean((rgb_map - gt_rgb) ** 2)
             PSNRs.append(-10.0 * np.log(loss.item()) / np.log(10.0))
-            # s3im_loss = s3im(rgb_map.unsqueeze(0), gt_rgb.unsqueeze(0))  # test-in 计算S3IM损失
-            # mse = s3im_loss.item() + 1e-10
-            # psnr = 20 * np.log10(1.0 / np.sqrt(mse))
-            # psnr = -10.0 * torch.log((mse)/torch.log(10.0))
-            # PSNRs.append(psnr)
+            # s3im_loss = s3im(rgb_map, gt_rgb)
+            # ssim = s3im_loss.item()
 
             if compute_extra_metrics:
-                # ssim = rgb_ssim(rgb_map, gt_rgb, 1)
+                ssim = rgb_ssim(rgb_map, gt_rgb, 1)
                 # ssim = S3IM(rgb_map, gt_rgb, 1)
-                ssim = S3IM(rgb_map, gt_rgb)
+                # ssim = S3IM(rgb_map, gt_rgb)
                 # ssim = s3im(rgb_map.unsqueeze(0), gt_rgb.unsqueeze(0))  # test-in 计算SSIM(s3im)
                 ms_ssim = MS_SSIM(
                     rgb_map.permute(2, 0, 1).unsqueeze(0),
@@ -145,7 +145,7 @@ def evaluation(
                 msssims.append(ms_ssim)
                 l_alex.append(l_a)
                 l_vgg.append(l_v)
-#               
+        #
         rgb_map = (rgb_map.numpy() * 255).astype("uint8")
         gt_rgb_map = (gt_rgb.numpy() * 255).astype("uint8")
 
@@ -210,22 +210,22 @@ def evaluation(
                 for i in range(len(PSNRs)):
                     f.write(f"Index {i}, PSNR: {PSNRs[i]}\n")
 
-    return PSNRs
+    return PSNRs, ssims
 
 
 @torch.no_grad()
 def evaluation_path(
-    test_dataset,
-    model,
-    cfg,
-    savePath=None,
-    N_vis=5,
-    prefix="",
-    N_samples=-1,
-    white_bg=False,
-    ndc_ray=False,
-    compute_extra_metrics=True,
-    device="cuda",
+        test_dataset,
+        model,
+        cfg,
+        savePath=None,
+        N_vis=5,
+        prefix="",
+        N_samples=-1,
+        white_bg=False,
+        ndc_ray=False,
+        compute_extra_metrics=True,
+        device="cuda",
 ):
     """
     Evaluate the model on the valiation rays.

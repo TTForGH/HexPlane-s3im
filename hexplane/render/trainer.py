@@ -10,7 +10,7 @@ from hexplane.render.render import evaluation
 from hexplane.render.util.Reg import TVLoss, compute_dist_loss
 from hexplane.render.util.Sampling import GM_Resi, cal_n_samples
 from hexplane.render.util.util import N_to_reso
-
+from hexplane.render.s3im import S3IM
 # from hexplane.render.util.s3im import S3IM
 
 class SimpleSampler: # 采样器
@@ -295,7 +295,7 @@ class Trainer:
             file=sys.stdout,
         )
 
-        PSNRs, PSNRs_test = [], [0]
+        s3ims, PSNRs, PSNRs_test = [], [], [0]
         torch.cuda.empty_cache()
 
         # Initialize the optimizer
@@ -325,10 +325,11 @@ class Trainer:
 # test-in
             # Calculate the loss
             loss = torch.mean((rgb_map - rgb_train) ** 2)
-            # s3im = S3IM(kernel_size=4, stride=4, repeat_time=50, patch_height=64, patch_width=500, max_val=1.0, filter_size=11, filter_sigma=1.5) # test-in
-            # s3im_loss = s3im(rgb_map.unsqueeze(0), rgb_train.unsqueeze(0))  # test-in 计算S3IM损失
-            # loss = s3im_loss.item() + 1e-10
-            total_loss = loss
+
+            s3im = S3IM(repeat_time=10) # test-in
+            s3im_loss = s3im(rgb_map, rgb_train)
+            loss_s3im = s3im_loss.item()
+            total_loss = loss + loss_s3im
 
             # Calculate the learning rate decay factor
             lr_factor = self.get_lr_decay_factor(iteration)
@@ -411,12 +412,14 @@ class Trainer:
             # 确保 loss 是一个张量并且可能在 GPU 上，并且需要从计算图中分离它
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach().cpu().numpy()  # 分离，移动到 CPU，然后转换为 NumPy 数组
+                s3im1 = s3im_loss.detach().cpu().numpy()
             else:
                 loss = np.array(loss)  # 确保 loss 是 NumPy 数组，以防它不是张量
+                s3im1 = np.array(s3im_loss)
 
             psnr = -10.0 * np.log(loss) / np.log(10.0)
             PSNRs.append(psnr)
-
+            s3ims.append(s3im1)
             # PSNRs.append(-10.0 * np.log(loss) / np.log(10.0))
             
             # psnr = 20 * np.log10(1.0 / np.sqrt(loss))
@@ -429,6 +432,7 @@ class Trainer:
                 pbar.set_description(
                     f"Iteration {iteration:05d}:"
                     + f" train_psnr = {float(np.mean(PSNRs)):.2f}"
+                    + f" train_s3im = {float(np.mean(s3ims)):.2f}"
                     + f" test_psnr = {float(np.mean(PSNRs_test)):.2f}"
                     + f" mse = {loss:.6f}"
                 )
